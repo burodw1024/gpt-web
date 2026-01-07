@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Buro On-Prem Private LLM + RAG</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; background:#0b0f14; color:#e6edf3; }
+    header { padding:16px 18px; background:#111823; border-bottom:1px solid #1e2a3a; display:flex; gap:12px; align-items:center; }
+    header h1 { margin:0; font-size:16px; font-weight:600; flex:1; }
+    header a { color:#9fb0c3; text-decoration:none; border:1px solid #1e2a3a; padding:6px 10px; border-radius:10px; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .bar { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+    .toggle { display:flex; gap:8px; align-items:center; font-size:13px; color:#9fb0c3; }
+    .pill { padding:4px 8px; border:1px solid #1e2a3a; border-radius:999px; font-size:12px; color:#9fb0c3; }
+    .chatbox { background:#0f1621; border:1px solid #1e2a3a; border-radius:12px; height: 70vh; overflow:auto; padding: 14px; }
+    .msg { margin: 10px 0; display:flex; }
+    .msg.user { justify-content:flex-end; }
+    .bubble { max-width: 78%; padding:10px 12px; border-radius:12px; white-space:pre-wrap; line-height:1.35; }
+    .user .bubble { background:#1d4ed8; }
+    .assistant .bubble { background:#152235; border:1px solid #22324a; }
+    .composer { display:flex; gap:10px; margin-top:12px; }
+    textarea { flex:1; resize:none; height:54px; padding:10px 12px; border-radius:12px;
+               border:1px solid #1e2a3a; background:#0f1621; color:#e6edf3; }
+    button { width:140px; border-radius:12px; border:1px solid #1e2a3a; background:#0b5cff; color:white;
+             font-weight:600; cursor:pointer; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    .hint { color:#9fb0c3; font-size:12px; margin-top:10px; }
+
+
+
+header { display:flex; align-items:center; gap:16px; }
+
+header .nav { display:flex; gap:10px; }
+
+header .navlink { padding:6px 10px; border:1px solid #ccc; border-radius:8px; text-decoration:none; }
+
+
+
+select:disabled,
+
+input:disabled {
+
+  opacity: 0.6;
+
+  cursor: not-allowed;
+
+}
+
+
+
+
+
+
+  </style>
+</head>
+<body>
+<header>
+  <a href="/upload">Upload JSONL</a>
+
+<a href="/export/actors.jsonl" target="_blank" rel="noopener">Export Actors JSONL</a>
+  <h1>Buro On-Prem Private LLM + RAG</h1>
+
+<a href="/admin-tools/qdrant/">Qdrant Admin</a>
+
+
+
+</header>
+
+<div class="wrap">
+  <div class="bar">
+    <div class="toggle">
+      <span class="pill" id="modePill">Mode: RAG</span>
+      <label><input type="checkbox" id="modeToggle" checked /> Use Qdrant (RAG)</label>
+    </div>
+    <div class="pill">/api/ask (RAG) or /api/chat (LLM)</div>
+  </div>
+
+<!-- ===== Math Control Strip ===== -->
+
+<div class="bar" style="background:#0f1621;border:1px solid #1e2a3a;border-radius:12px;padding:8px 12px;">
+
+  <div class="toggle">
+
+    <label>
+
+      <input type="checkbox" id="mathModeToggle" />
+
+      Math mode (use ALL employees)
+
+    </label>
+
+  </div>
+
+
+
+  <select id="mathOp" disabled
+
+          style="background:#0b0f14;color:#e6edf3;border:1px solid #1e2a3a;border-radius:8px;padding:4px 8px;">
+
+    <option value="salary_stats">Salary stats</option>
+
+    <option value="total_salary">Total salary</option>
+
+    <option value="avg_salary">Average salary</option>
+
+    <option value="count_employees">Employee count</option>
+
+  </select>
+
+
+
+  <label class="toggle">
+
+    Max points
+
+    <input type="number" id="maxPoints" value="500" min="1"
+
+           style="width:80px;background:#0b0f14;color:#e6edf3;
+
+                  border:1px solid #1e2a3a;border-radius:8px;padding:4px 6px;"
+
+           disabled />
+
+  </label>
+
+
+
+  <span class="pill">/api/math</span>
+
+</div>
+
+
+
+
+
+
+  <div id="chatbox" class="chatbox"></div>
+
+  <div class="composer">
+    <textarea id="input" placeholder="Type your message…"></textarea>
+    <button id="sendBtn">Send</button>
+  </div>
+
+  <div class="hint">
+    RAG mode: embed the question, search Qdrant, answer from retrieved context.
+  </div>
+</div>
+
+<script>
+
+const mathModeToggle = document.getElementById("mathModeToggle");
+
+const mathOp = document.getElementById("mathOp");
+
+const maxPoints = document.getElementById("maxPoints");
+
+
+
+
+
+
+
+  const chatbox = document.getElementById("chatbox");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("sendBtn");
+  const modeToggle = document.getElementById("modeToggle");
+  const modePill = document.getElementById("modePill");
+
+
+
+
+mathModeToggle.addEventListener("change", () => {
+
+  const enabled = mathModeToggle.checked;
+
+  mathOp.disabled = !enabled;
+
+  maxPoints.disabled = !enabled;
+
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  let history = [];
+
+  function addMessage(role, content) {
+    const row = document.createElement("div");
+    row.className = `msg ${role}`;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = content;
+    row.appendChild(bubble);
+    chatbox.appendChild(row);
+    chatbox.scrollTop = chatbox.scrollHeight;
+    return bubble;
+  }
+
+  function updateModeLabel() {
+    modePill.textContent = modeToggle.checked ? "Mode: RAG" : "Mode: LLM";
+  }
+  modeToggle.addEventListener("change", updateModeLabel);
+  updateModeLabel();
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = "";
+    sendBtn.disabled = true;
+
+    addMessage("user", text);
+    const thinking = addMessage("assistant", "Thinking...");
+
+   //  try {
+    //  const useRag = modeToggle.checked;
+    //  const url = useRag ? "/api/ask" : "/api/chat";
+   //   const body = useRag ? { question: text, top_k: 6 } : { message: text, history };
+
+   //   const resp = await fetch(url, {
+   //     method: "POST",
+   //     headers: {"Content-Type":"application/json"},
+   //     body: JSON.stringify(body)
+   //   });
+
+
+
+try {
+
+  const useRag = modeToggle.checked;
+
+
+
+  // -------- MATH MODE --------
+
+  if (mathModeToggle.checked) {
+
+    const resp = await fetch("/api/math", {
+
+      method: "POST",
+
+      headers: {"Content-Type":"application/json"},
+
+      body: JSON.stringify({
+
+        op: mathOp.value,
+
+        max_points: parseInt(maxPoints.value || "500", 10)
+
+      })
+
+    });
+
+
+
+    const data = await resp.json();
+
+    if (!resp.ok) throw new Error(data.error || "Math request failed");
+
+
+
+    thinking.textContent = JSON.stringify(data, null, 2);
+
+    return;
+
+  }
+
+
+
+
+
+
+
+
+
+
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Request failed");
+
+      thinking.textContent = data.answer || "(empty response)";
+
+      if (!useRag) {
+        history.push({role:"user", content:text});
+        history.push({role:"assistant", content:data.answer || ""});
+      }
+    } catch (err) {
+      thinking.textContent = "Error: " + err.message;
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener("click", sendMessage);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  addMessage("assistant", "System ready. Use Upload JSONL to ingest data, then ask questions.");
+</script>
+</body>
+</html>

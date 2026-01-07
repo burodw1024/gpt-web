@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Upload JSONL for RAG Upsert</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; background:#0b0f14; color:#e6edf3; }
+    header { padding:16px 18px; background:#111823; border-bottom:1px solid #1e2a3a; display:flex; gap:12px; align-items:center; }
+    header a { color:#9fb0c3; text-decoration:none; border:1px solid #1e2a3a; padding:6px 10px; border-radius:10px; }
+    header h1 { margin:0; font-size:16px; font-weight:600; flex:1; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .card { background:#0f1621; border:1px solid #1e2a3a; border-radius:12px; padding:14px; }
+    label { display:block; margin-top:10px; color:#9fb0c3; font-size:13px; }
+    input[type="text"], input[type="file"] {
+      width:100%; padding:10px 12px; border-radius:12px;
+      border:1px solid #1e2a3a; background:#0b0f14; color:#e6edf3;
+      margin-top:6px;
+    }
+    button { margin-top:12px; border-radius:12px; border:1px solid #1e2a3a; background:#0b5cff; color:white;
+             font-weight:600; cursor:pointer; padding:10px 14px; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    pre { background:#0b0f14; border:1px solid #1e2a3a; padding:12px; border-radius:12px; overflow:auto; }
+    .hint { color:#9fb0c3; font-size:12px; margin-top:10px; }
+  </style>
+</head>
+<body>
+<header>
+  <a href="/">Chat</a>
+  <h1>Upload JSONL → Upsert to Qdrant</h1>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <label>JSONL file (one JSON per line, must contain "prompt")</label>
+    <input id="file" type="file" accept=".jsonl" />
+
+    <label>Qdrant collection (optional)</label>
+    <input id="collection" type="text" placeholder="dw_text" />
+
+    <label>Embedding model (optional)</label>
+    <input id="embed_model" type="text" placeholder="nomic-embed-text:latest" />
+
+    <button id="btn">Upload & Upsert</button>
+
+    <div class="hint">
+      Upload time depends on file size. Each line calls Ollama embeddings + Qdrant upsert.
+    </div>
+
+    <h3>Result</h3>
+    <pre id="out">{}</pre>
+  </div>
+</div>
+
+<script>
+  const fileEl = document.getElementById("file");
+  const collectionEl = document.getElementById("collection");
+  const modelEl = document.getElementById("embed_model");
+  const btn = document.getElementById("btn");
+  const out = document.getElementById("out");
+
+  btn.addEventListener("click", async () => {
+    if (!fileEl.files.length) {
+      out.textContent = JSON.stringify({error:"Please choose a .jsonl file"}, null, 2);
+      return;
+    }
+
+    btn.disabled = true;
+    out.textContent = JSON.stringify({status:"Uploading..."}, null, 2);
+
+    try {
+      const fd = new FormData();
+      fd.append("file", fileEl.files[0]);
+
+      if (collectionEl.value.trim()) fd.append("collection", collectionEl.value.trim());
+      if (modelEl.value.trim()) fd.append("embed_model", modelEl.value.trim());
+
+      const resp = await fetch("/api/upload-jsonl", { method:"POST", body: fd });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Upload failed");
+
+      out.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+      out.textContent = JSON.stringify({error: e.message}, null, 2);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

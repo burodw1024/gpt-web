@@ -1,0 +1,61 @@
+
+# Python
+
+__pycache__/
+
+*.pyc
+
+*.pyo
+
+*.pyd
+
+*.sqlite3
+
+.env
+
+venv/
+
+.env/
+
+
+
+# Django
+
+staticfiles/
+
+media/
+
+
+
+# LLM / Model files
+
+qwen2.5-1.5b/
+
+models/
+
+*.gguf
+
+*.bin
+
+
+
+# Logs
+
+*.log
+
+
+
+# OS
+
+.DS_Store
+
+Thumbs.db
+
+
+
+# IDE
+
+.vscode/
+
+.idea/
+
